@@ -1,10 +1,5 @@
 //! cargo-asm driver
-#![allow(non_snake_case, non_upper_case_globals)]
-#![allow(
-    clippy::missing_docs_in_private_items,
-    clippy::option_unwrap_used,
-    clippy::result_unwrap_used
-)]
+#![allow(clippy::missing_docs_in_private_items, clippy::unwrap_used)]
 
 mod asm;
 mod build;
@@ -50,17 +45,17 @@ fn main() {
         ::std::process::exit(1);
     }
 
-    if opts.debug_mode() {
+    if OPTS.debug_mode() {
         log::set_max_level(log::LevelFilter::Debug);
     } else {
         log::set_max_level(log::LevelFilter::Error);
     }
 
-    debug!("Options: {:?}", *opts);
+    debug!("Options: {:?}", *OPTS);
 
     // Executing cargo asm into a different path via --manifest-path=... is
     // done by changing the current working directory.
-    if let Some(ref new_path) = opts.manifest_path() {
+    if let Some(ref new_path) = OPTS.manifest_path() {
         if !new_path.exists() {
             error!("The manifest-path {} does not exist!", new_path.display());
             ::std::process::exit(1);
@@ -88,7 +83,7 @@ fn main() {
     for f in &files {
         debug!("  {}", f.display());
     }
-    let o = { (*opts.read()).clone() };
+    let o = { (*OPTS.read()).clone() };
 
     let target = crate::target::TargetInfo::new_from_target();
 

@@ -5,11 +5,11 @@
 use crate::asm::Style;
 use crate::build::Type;
 use lazy_static::lazy_static;
+use std::path::PathBuf;
 use structopt::StructOpt;
 
 lazy_static! {
-    pub static ref opts: ::parking_lot::RwLock<Options> =
-        { ::parking_lot::RwLock::new(read()) };
+    pub static ref OPTS: ::parking_lot::RwLock<Options> = ::parking_lot::RwLock::new(read());
 }
 
 /// CLI options of cargo asm.
@@ -22,7 +22,7 @@ pub struct Asm {
     )]
     pub path: Option<String>,
     #[structopt(long = "target", help = "Build for the target triple.")]
-    pub TRIPLE: Option<String>,
+    pub triple: Option<String>,
     #[structopt(long = "no-color", help = "Disable colored output.")]
     pub no_color: bool,
     #[structopt(
@@ -52,17 +52,14 @@ pub struct Asm {
         help = "Serialize asm AST to json (ignores most other options)."
     )]
     pub json: bool,
-    #[structopt(
-        long = "debug-mode",
-        help = "Prints output useful for debugging."
-    )]
+    #[structopt(long = "debug-mode", help = "Prints output useful for debugging.")]
     pub debug_mode: bool,
     #[structopt(
         long = "manifest-path",
         help = "Runs cargo-asm in a different path.",
         parse(from_os_str)
     )]
-    pub manifest_path: Option<::std::path::PathBuf>,
+    pub manifest_path: Option<PathBuf>,
     #[structopt(
         long = "debug-info",
         help = "Generates assembly with debugging information even if that's not required."
@@ -87,7 +84,7 @@ pub struct LlvmIr {
     )]
     pub path: Option<String>,
     #[structopt(long = "target", help = "Build for the target triple.")]
-    pub TRIPLE: Option<String>,
+    pub triple: Option<String>,
     #[structopt(long = "features", help = "cargo build --features=…")]
     pub features: Vec<String>,
     #[structopt(long = "example", help = "cargo build --example=…")]
@@ -102,17 +99,14 @@ pub struct LlvmIr {
     pub build_type: Type,
     #[structopt(long = "rust", help = "Print interleaved Rust code.")]
     pub rust: bool,
-    #[structopt(
-        long = "debug-mode",
-        help = "Prints output useful for debugging."
-    )]
+    #[structopt(long = "debug-mode", help = "Prints output useful for debugging.")]
     pub debug_mode: bool,
     #[structopt(
         long = "manifest-path",
         help = "Runs cargo-asm in a different path.",
         parse(from_os_str)
     )]
-    pub manifest_path: Option<::std::path::PathBuf>,
+    pub manifest_path: Option<PathBuf>,
     #[structopt(long = "lib", help = "Builds only the lib target.")]
     pub lib: bool,
     #[structopt(
@@ -124,7 +118,7 @@ pub struct LlvmIr {
 
 pub trait Ext {
     fn path(&self) -> Option<String>;
-    fn TRIPLE(&self) -> Option<String>;
+    fn triple(&self) -> Option<String>;
     fn no_color(&self) -> bool;
     fn asm_style(&self) -> Option<Style>;
     fn build_type(&self) -> Type;
@@ -133,7 +127,7 @@ pub trait Ext {
     fn directives(&self) -> Option<bool>;
     fn json(&self) -> bool;
     fn debug_mode(&self) -> bool;
-    fn manifest_path(&self) -> Option<::std::path::PathBuf>;
+    fn manifest_path(&self) -> Option<PathBuf>;
     fn use_colors(&self) -> bool;
     fn print_comments(&self) -> bool;
     fn print_directives(&self) -> bool;
@@ -151,10 +145,10 @@ impl Ext for ::parking_lot::RwLock<Options> {
             Options::LlvmIr(ref o) => o.path.clone(),
         }
     }
-    fn TRIPLE(&self) -> Option<String> {
+    fn triple(&self) -> Option<String> {
         match *self.read() {
-            Options::Asm(ref o) => o.TRIPLE.clone(),
-            Options::LlvmIr(ref o) => o.TRIPLE.clone(),
+            Options::Asm(ref o) => o.triple.clone(),
+            Options::LlvmIr(ref o) => o.triple.clone(),
         }
     }
     fn no_color(&self) -> bool {
@@ -205,7 +199,7 @@ impl Ext for ::parking_lot::RwLock<Options> {
             Options::LlvmIr(ref o) => o.debug_mode,
         }
     }
-    fn manifest_path(&self) -> Option<::std::path::PathBuf> {
+    fn manifest_path(&self) -> Option<PathBuf> {
         match *self.read() {
             Options::Asm(ref o) => o.manifest_path.clone(),
             Options::LlvmIr(ref o) => o.manifest_path.clone(),

@@ -2,21 +2,18 @@ use super::*;
 use crate::target::TargetInfo;
 
 use serde_derive::Serialize;
+use std::path::PathBuf;
 
 /// Formatting of Rust source code:
 #[derive(Clone, Serialize)]
 struct Rust {
     line: String,
-    path: ::std::path::PathBuf,
+    path: PathBuf,
     loc: asm::ast::Loc,
 }
 
 impl Rust {
-    fn new(
-        line: String,
-        path: ::std::path::PathBuf,
-        loc: asm::ast::Loc,
-    ) -> Self {
+    fn new(line: String, path: PathBuf, loc: asm::ast::Loc) -> Self {
         Self { line, path, loc }
     }
 }
@@ -30,22 +27,16 @@ enum Kind {
 
 /// Prints `kind` using `opts`.
 #[allow(clippy::items_after_statements)]
-fn write_output(
-    kind: &Kind,
-    function: &asm::ast::Function,
-    target: &TargetInfo,
-) {
+fn write_output(kind: &Kind, function: &asm::ast::Function, target: &TargetInfo) {
     // Filter out what to print:
     match kind {
         Kind::Asm(ref a) => {
             use crate::asm::ast::Statement::*;
             match a {
-                Comment(_) if !opts.print_comments() => return,
-                Directive(_) if !opts.print_directives() => return,
+                Comment(_) if !OPTS.print_comments() => return,
+                Directive(_) if !OPTS.print_directives() => return,
                 Label(ref l) => {
-                    if l.id.contains("Lcfi")
-                        || l.id.contains("Ltmp")
-                        || l.id.contains("Lfunc_end")
+                    if l.id.contains("Lcfi") || l.id.contains("Ltmp") || l.id.contains("Lfunc_end")
                     {
                         return;
                     }
@@ -54,7 +45,7 @@ fn write_output(
             }
         }
         Kind::Rust(_) => {
-            if !opts.rust() {
+            if !OPTS.rust() {
                 return;
             }
         }
@@ -71,7 +62,7 @@ fn write_output(
             use crate::asm::ast::Statement::*;
             match *a {
                 Comment(_) | Directive(_) | Instruction(_) => {
-                    if !opts.rust() || part_of_main_function {
+                    if !OPTS.rust() || part_of_main_function {
                         1
                     } else {
                         5
@@ -91,11 +82,9 @@ fn write_output(
     let indent = (0..indent).map(|_| " ").collect::<String>();
 
     use std::io::Write;
-    use termcolor::{
-        Buffer, BufferWriter, Color, ColorChoice, ColorSpec, WriteColor,
-    };
+    use termcolor::{Buffer, BufferWriter, Color, ColorChoice, ColorSpec, WriteColor};
 
-    let bufwtr = if opts.use_colors() {
+    let bufwtr = if OPTS.use_colors() {
         BufferWriter::stdout(ColorChoice::Auto)
     } else {
         BufferWriter::stdout(ColorChoice::Never)
@@ -127,8 +116,7 @@ fn write_output(
 
     fn debug_mode_format(mut buffer: &mut Buffer, loc: Option<asm::ast::Loc>) {
         if let Some(loc) = loc {
-            write!(&mut buffer, "   [{}:{}]", loc.file_index, loc.file_line)
-                .unwrap();
+            write!(&mut buffer, "   [{}:{}]", loc.file_index, loc.file_line).unwrap();
         } else {
             write!(&mut buffer, "   [-:-]").unwrap();
         }
@@ -142,19 +130,13 @@ fn write_output(
                     buffer.set_color(&label_color).unwrap();
                     write!(&mut buffer, "{}", l.id).unwrap();
                     write!(&mut buffer, ":").unwrap();
-                    if opts.debug_mode() {
+                    if OPTS.debug_mode() {
                         debug_mode_format(&mut buffer, l.rust_loc());
                     }
                 }
                 Directive(ref d) => match d {
                     asm::ast::Directive::File(ref f) => {
-                        write!(
-                            &mut buffer,
-                            ".file {} \"{}\"",
-                            f.index,
-                            f.path.display(),
-                        )
-                        .unwrap();
+                        write!(&mut buffer, ".file {} \"{}\"", f.index, f.path.display(),).unwrap();
                     }
                     asm::ast::Directive::Loc(ref l) => {
                         write!(
@@ -171,7 +153,7 @@ fn write_output(
                 Comment(ref c) => {
                     buffer.set_color(&comment_color).unwrap();
                     write!(&mut buffer, "{}", c.string).unwrap();
-                    if opts.debug_mode() {
+                    if OPTS.debug_mode() {
                         debug_mode_format(&mut buffer, c.rust_loc());
                     }
                 }
@@ -182,10 +164,10 @@ fn write_output(
                     } else {
                         write!(&mut buffer, "{: <7}", i.instr).unwrap();
                     }
-                    if i.is_jump(&target) {
+                    if i.is_jump(target) {
                         // jump instructions
                         buffer.set_color(&label_color).unwrap();
-                    } else if i.is_call(&target) {
+                    } else if i.is_call(target) {
                         buffer.set_color(&instr_call_arg_color).unwrap();
                     } else {
                         buffer.set_color(&instr_arg_color).unwrap();
@@ -193,7 +175,7 @@ fn write_output(
                     if !i.args.is_empty() {
                         write!(&mut buffer, " {}", i.args.join(", ")).unwrap();
                     }
-                    if opts.debug_mode() {
+                    if OPTS.debug_mode() {
                         debug_mode_format(&mut buffer, i.rust_loc());
                     }
                 }
@@ -203,7 +185,7 @@ fn write_output(
             buffer.set_color(&rust_color).unwrap();
             if part_of_main_function {
                 write!(&mut buffer, "{}", r.line).unwrap();
-                if opts.debug_mode() {
+                if OPTS.debug_mode() {
                     debug_mode_format(&mut buffer, Some(r.loc));
                 }
             } else {
@@ -245,15 +227,8 @@ fn format_function_name(function: &asm::ast::Function) -> String {
 
 /// Returns true if the statement is in the function. It returns true if the
 /// question cannot be answered.
-fn is_stmt_in_function(
-    f: &asm::ast::Function,
-    stmt: &asm::ast::Statement,
-) -> bool {
-    let function_file_index = if let Some(loc) = f.loc {
-        Some(loc.file_index)
-    } else {
-        None
-    };
+fn is_stmt_in_function(f: &asm::ast::Function, stmt: &asm::ast::Statement) -> bool {
+    let function_file_index = f.loc.map(|loc| loc.file_index);
 
     if let Some(function_file_index) = function_file_index {
         if let Some(loc) = stmt.rust_loc() {
@@ -267,19 +242,16 @@ fn is_stmt_in_function(
 /// Returns true if the rust code belongs to the function `f`. It returns true
 /// if the question cannot be answered.
 fn is_rust_in_function(f: &asm::ast::Function, rust: &Rust) -> bool {
-    let function_file_index = if let Some(loc) = f.loc {
-        Some(loc.file_index)
-    } else {
-        None
-    };
+    let function_file_index = f.loc.map(|loc| loc.file_index);
 
     if let Some(function_file_index) = function_file_index {
         return rust.loc.file_index == function_file_index;
     }
+
     true
 }
 
-fn make_path_relative(path: &mut ::std::path::PathBuf) {
+fn make_path_relative(path: &mut PathBuf) {
     // The path might already be relative:
     if !path.is_absolute() {
         return;
@@ -287,21 +259,19 @@ fn make_path_relative(path: &mut ::std::path::PathBuf) {
 
     // Trim std lib paths:
     let rust_src_path = crate::target::rust_src_path_component();
-    let current_dir_path =
-        ::std::env::current_dir().expect("cannot read the current dir");
+    let current_dir_path = ::std::env::current_dir().expect("cannot read the current dir");
     debug!("making paths relative: {}", path.display());
     debug!(" * std lib paths contain: {}", rust_src_path.display());
     debug!(" * local paths contain: {}", current_dir_path.display());
 
-    if crate::path::contains(&path, &rust_src_path) {
-        let new_path = crate::path::after(&path, &rust_src_path);
+    if crate::path::contains(path, &rust_src_path) {
+        let new_path = crate::path::after(path, &rust_src_path);
         debug!("  * rel path std: {}", new_path.display());
         *path = new_path;
-    } else if crate::path::contains(&path, &current_dir_path) {
-        let new_path = crate::path::after(&path, &current_dir_path);
+    } else if crate::path::contains(path, &current_dir_path) {
+        let new_path = crate::path::after(path, &current_dir_path);
         debug!("  * rel path loc: {}", new_path.display());
         *path = new_path;
-        return;
     } else {
         debug!("  * path is neither local nor to std lib");
     }
@@ -314,32 +284,23 @@ fn make_path_relative(path: &mut ::std::path::PathBuf) {
 /// This functions trims their path.
 ///
 /// The path of the current crate are also displayed as relative paths.
-fn make_paths_relative(
-    function: &mut asm::ast::Function,
-    rust: &mut rust::Files,
-) {
+fn make_paths_relative(function: &mut asm::ast::Function, files: &mut rust::Files) {
     if let Some(ref mut file) = &mut function.file {
         make_path_relative(&mut file.path)
     }
-    for f in rust.files.values_mut() {
+    for f in files.values_mut() {
         make_path_relative(&mut f.ast.path)
     }
 }
 
-pub fn print(
-    function: &mut asm::ast::Function,
-    mut rust: rust::Files,
-    target: &TargetInfo,
-) {
+pub fn print(function: &mut asm::ast::Function, mut rust: rust::Files, target: &TargetInfo) {
     make_paths_relative(function, &mut rust);
 
-    if !opts.rust() {
+    if !OPTS.rust() {
         // When emitting assembly without Rust code, print the requested
         // function path (the first function line will not be emitted):
         use std::io::Write;
-        use termcolor::{
-            BufferWriter, Color, ColorChoice, ColorSpec, WriteColor,
-        };
+        use termcolor::{BufferWriter, Color, ColorChoice, ColorSpec, WriteColor};
 
         let mut rust_color = ColorSpec::new();
         rust_color
@@ -347,7 +308,7 @@ pub fn print(
             .set_fg(Some(Color::Red))
             .set_bold(true);
 
-        let bufwtr = if opts.use_colors() {
+        let bufwtr = if OPTS.use_colors() {
             BufferWriter::stdout(ColorChoice::Auto)
         } else {
             BufferWriter::stdout(ColorChoice::Never)
@@ -361,15 +322,11 @@ pub fn print(
     let output = merge_rust_and_asm(function, &rust);
 
     for o in &output {
-        write_output(o, function, &target);
+        write_output(o, function, target);
     }
-    return;
 }
 
-fn merge_rust_and_asm(
-    function: &asm::ast::Function,
-    rust_files: &rust::Files,
-) -> Vec<Kind> {
+fn merge_rust_and_asm(function: &asm::ast::Function, rust_files: &rust::Files) -> Vec<Kind> {
     let mut output = Vec::<Kind>::new();
     for stmt in &function.statements {
         if let Some(rust_loc) = stmt.rust_loc() {
@@ -423,7 +380,7 @@ pub fn write_error(msg: &str) {
         .set_fg(Some(Color::Red))
         .set_bold(true);
 
-    let bufwtr = if opts.use_colors() {
+    let bufwtr = if OPTS.use_colors() {
         BufferWriter::stderr(ColorChoice::Auto)
     } else {
         BufferWriter::stderr(ColorChoice::Never)
@@ -436,11 +393,8 @@ pub fn write_error(msg: &str) {
     bufwtr.print(&buffer).unwrap();
 }
 
-pub fn to_json(
-    function: &asm::ast::Function,
-    rust_files: &rust::Files,
-) -> Option<String> {
-    let r = merge_rust_and_asm(&function, rust_files);
+pub fn to_json(function: &asm::ast::Function, rust_files: &rust::Files) -> Option<String> {
+    let r = merge_rust_and_asm(function, rust_files);
     match ::serde_json::to_string_pretty(&r) {
         Ok(s) => Some(s),
         Err(e) => {

@@ -3,6 +3,7 @@ use log::{debug, error};
 
 use serde_derive::Deserialize;
 use std::io::prelude::*;
+use std::path::{Path, PathBuf};
 
 pub struct TargetInfo {
     triple: String,
@@ -10,7 +11,7 @@ pub struct TargetInfo {
 
 impl Default for TargetInfo {
     fn default() -> Self {
-        TargetInfo {
+        Self {
             triple: "none-none-none".to_owned(),
         }
     }
@@ -18,13 +19,11 @@ impl Default for TargetInfo {
 
 impl TargetInfo {
     pub fn new_from_target() -> Self {
-        TargetInfo::new_from_triple(target())
+        Self::new_from_triple(target())
     }
 
     pub fn new_from_triple(triple: String) -> Self {
-        let mut ti = TargetInfo::default();
-        ti.triple = triple.clone();
-        ti
+        Self { triple }
     }
 
     pub fn is_intel(&self) -> bool {
@@ -82,52 +81,50 @@ impl TargetInfo {
 
 /// Returns the target that is being compiled.
 fn target() -> String {
-    if let Some(triple) = opts.TRIPLE() {
+    if let Some(triple) = OPTS.triple() {
         // If the user specified it, we know it:
-        triple
-    } else {
-        // The user did not specify explicitly specify it, so the let's see
-        // whether we can find a TARGET variable in the environment
-        if let Ok(target) = ::std::env::var("TARGET") {
-            return target;
+        return triple;
+    }
+
+    // The user did not specify explicitly specify it, so the let's see
+    // whether we can find a TARGET variable in the environment
+    if let Ok(target) = ::std::env::var("TARGET") {
+        return target;
+    }
+
+    // Try reading the build target from the cargo config file
+    if let Ok(mut file) = std::fs::File::open(std::path::Path::new("./.cargo/config")) {
+        #[derive(Deserialize, Debug)]
+        struct Config {
+            build: Option<Build>,
         }
 
-        // Try reading the build target from the cargo config file
-        if let Ok(mut file) =
-            std::fs::File::open(std::path::Path::new("./.cargo/config"))
-        {
-            #[derive(Deserialize, Debug)]
-            struct Config {
-                build: Option<Build>,
-            }
+        #[derive(Deserialize, Debug)]
+        struct Build {
+            target: Option<String>,
+        }
 
-            #[derive(Deserialize, Debug)]
-            struct Build {
-                target: Option<String>,
-            }
-
-            let mut contents = String::new();
-            if file.read_to_string(&mut contents).is_ok() {
-                if let Ok(config) = toml::from_str::<Config>(&contents) {
-                    if let Some(build) = config.build {
-                        if let Some(target) = build.target {
-                            return target.to_owned();
-                        }
+        let mut contents = String::new();
+        if file.read_to_string(&mut contents).is_ok() {
+            if let Ok(config) = toml::from_str::<Config>(&contents) {
+                if let Some(build) = config.build {
+                    if let Some(target) = build.target {
+                        return target;
                     }
                 }
             }
         }
-
-        // If everything else fails use a best effort guesstimate for the
-        // current platform
-        if let Some(target) = platforms::guess_current() {
-            return target.target_triple.to_owned();
-        }
-
-        // Let's give up
-        error!("unknown target");
-        ::std::process::exit(1);
     }
+
+    // If everything else fails use a best effort guesstimate for the
+    // current platform
+    if let Some(target) = platforms::guess_current() {
+        return target.target_triple.to_owned();
+    }
+
+    // Let's give up
+    error!("unknown target");
+    ::std::process::exit(1);
 }
 
 /// Returns a path component of the rust-src path (like rust std) that can be
@@ -137,40 +134,38 @@ fn target() -> String {
 /// This is a bit brittle since it needs to know even if the rust-src component
 /// is not installed, so we cannot query rustup for its path nor walk the
 /// sysroot to find it.
-pub fn rust_src_path_component() -> ::std::path::PathBuf {
-    let t = target();
-    let p = if t.contains("windows") {
+pub fn rust_src_path_component() -> PathBuf {
+    if target().contains("windows") {
         r#"lib\rustlib\src\rust\src"#
     } else {
         "lib/rustlib/src/rust/src"
-    };
-
-    ::std::path::PathBuf::from(p)
+    }
+    .into()
 }
 
-pub fn directory<P: AsRef<::std::path::Path>>(
-    sub_path: P,
-) -> ::std::path::PathBuf {
+pub fn directory(sub_path: impl AsRef<Path>) -> PathBuf {
     debug!("obtaining the target directory...");
     // Run cargo metadata to get the target directory
-    let mut target_directory = {
-        let mut cargo = ::std::process::Command::new("cargo");
-        cargo.arg("metadata");
-        cargo.arg("--format-version");
-        cargo.arg("1");
-        let error_msg = "cargo metadata failed";
-        let (stdout, _stderr) =
-            crate::process::exec(&mut cargo, error_msg, opts.debug_mode())
-                .expect(error_msg);
+    let mut target_directory =
+        {
+            let mut cargo = ::std::process::Command::new("cargo");
+            cargo.arg("metadata");
+            cargo.arg("--format-version");
+            cargo.arg("1");
+            let error_msg = "cargo metadata failed";
+            let (stdout, _stderr) =
+                crate::process::exec(&mut cargo, error_msg, OPTS.debug_mode()).expect(error_msg);
 
-        // Parse the metadata format
-        let v: ::serde_json::Value = ::serde_json::from_str(&stdout)
-            .expect("failed to parse cargo metadata's output as json");
-        ::std::path::PathBuf::from(v["target_directory"].as_str().expect("could not find key \"target_directory\" in the output of `cargo metadata`"))
-    };
+            // Parse the metadata format
+            let v: ::serde_json::Value = ::serde_json::from_str(&stdout)
+                .expect("failed to parse cargo metadata's output as json");
+            PathBuf::from(v["target_directory"].as_str().expect(
+                "could not find key \"target_directory\" in the output of `cargo metadata`",
+            ))
+        };
 
     // Generate build type path component:
-    let build_type = match opts.build_type() {
+    let build_type = match OPTS.build_type() {
         crate::build::Type::Release => "release",
         crate::build::Type::Debug => "debug",
     };

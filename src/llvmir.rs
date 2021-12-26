@@ -1,15 +1,17 @@
 use crate::options::*;
 use crate::target::TargetInfo;
 
+use std::path::{Path, PathBuf};
+
 use log::debug;
 
-pub fn run(files: &[::std::path::PathBuf], target: &TargetInfo) {
+pub fn run(files: &[PathBuf], target: &TargetInfo) {
     let mut function_table: Option<Vec<String>> = None;
 
     for f in files {
         debug!("Scanning file: {:?}", f);
         assert!(f.exists(), "path does not exist: {}", f.display());
-        let r = print_function(f, &target);
+        let r = print_function(f, target);
 
         if r.is_ok() {
             debug!("Function found, we are done!");
@@ -33,7 +35,7 @@ pub fn run(files: &[::std::path::PathBuf], target: &TargetInfo) {
     debug!("Function not found. Showing functions in the table...");
     let mut function_table = function_table.unwrap();
 
-    match opts.path() {
+    match OPTS.path() {
         None => {
             for f in function_table {
                 println!("{}", f);
@@ -50,18 +52,12 @@ pub fn run(files: &[::std::path::PathBuf], target: &TargetInfo) {
             let last_path = last_path.split(':').next_back().unwrap();
             function_table.sort_by(|a, b| {
                 edit_distance(a.split(':').next_back().unwrap(), last_path)
-                    .cmp(&edit_distance(
-                        b.split(':').next_back().unwrap(),
-                        last_path,
-                    ))
+                    .cmp(&edit_distance(b.split(':').next_back().unwrap(), last_path))
             });
 
             for (i, f) in function_table
                 .iter()
-                .take_while(|f| {
-                    edit_distance(f.split(':').next_back().unwrap(), last_path)
-                        <= 4
-                })
+                .take_while(|f| edit_distance(f.split(':').next_back().unwrap(), last_path) <= 4)
                 .enumerate()
             {
                 if i == 0 {
@@ -83,13 +79,10 @@ Tips:
     }
 }
 
-fn print_function(
-    file_name: &::std::path::PathBuf,
-    target: &TargetInfo,
-) -> Result<(), Vec<String>> {
+fn print_function(file_name: &Path, target: &TargetInfo) -> Result<(), Vec<String>> {
     use std::io::BufRead;
 
-    let path = if let Some(path) = opts.path() {
+    let path = if let Some(path) = OPTS.path() {
         path
     } else {
         "".to_owned()
@@ -126,14 +119,12 @@ fn print_function(
                 line
             );
             let mangled_name = &line[first + 1..last];
-            let demangled_name =
-                crate::demangle::demangle(&mangled_name, &target);
+            let demangled_name = crate::demangle::demangle(mangled_name, target);
             if demangled_name != path {
                 function_names.push(demangled_name);
                 continue;
             }
-            function_lines =
-                Some(vec![line.replace(mangled_name, &demangled_name)]);
+            function_lines = Some(vec![line.replace(mangled_name, &demangled_name)]);
             debug!("Found function with path: {:?}", path);
             continue;
         }
@@ -156,14 +147,12 @@ fn print_function(
                 let l = line[f..].find('"').unwrap() + f;
                 let mangled_name = &line[f..l];
                 let demangled_name = if mangled_name.ends_with(".exit") {
-                    let mut v = crate::demangle::demangle(
-                        &mangled_name[0..mangled_name.len() - 5],
-                        &target,
-                    );
+                    let mut v =
+                        crate::demangle::demangle(&mangled_name[0..mangled_name.len() - 5], target);
                     v += ".exit";
                     v
                 } else {
-                    crate::demangle::demangle(&mangled_name, &target)
+                    crate::demangle::demangle(mangled_name, target)
                 };
                 debug!(
                     "  f: {}, l: {}, mn: {}, dm: {}",

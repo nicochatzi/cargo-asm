@@ -4,51 +4,61 @@ use crate::asm;
 use crate::options::*;
 
 use log::{debug, info};
+use std::{
+    collections::{BTreeMap, HashMap},
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+};
 
 #[derive(Debug, Clone)]
 pub struct File {
     pub ast: asm::ast::File,
-    pub lines: ::std::collections::BTreeMap<usize, Option<String>>,
+    pub lines: BTreeMap<usize, Option<String>>,
 }
 
 impl File {
     pub fn line(&self, line_idx: usize) -> Option<String> {
-        if let Some(l) = self.lines.get(&line_idx) {
-            if let Some(ref l) = l {
-                return Some(l.clone());
-            }
+        if let Some(Some(ref l)) = self.lines.get(&line_idx) {
+            return Some(l.clone());
         }
         None
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Files {
-    pub files: ::std::collections::HashMap<usize, File>,
-}
+pub struct Files(HashMap<usize, File>);
 
 impl Files {
-    pub fn line_at(
-        &self,
-        file_index: usize,
-        line_idx: usize,
-    ) -> Option<String> {
-        if let Some(file) = self.files.get(&file_index) {
+    pub fn line_at(&self, file_index: usize, line_idx: usize) -> Option<String> {
+        if let Some(file) = self.0.get(&file_index) {
             return file.line(line_idx);
         }
         None
     }
+
     pub fn line(&self, loc: asm::ast::Loc) -> Option<String> {
         self.line_at(loc.file_index, loc.file_line)
     }
-    pub fn file_path(
-        &self,
-        loc: asm::ast::Loc,
-    ) -> Option<::std::path::PathBuf> {
-        if let Some(file) = self.files.get(&loc.file_index) {
+
+    pub fn file_path(&self, loc: asm::ast::Loc) -> Option<PathBuf> {
+        if let Some(file) = self.0.get(&loc.file_index) {
             return Some(file.ast.path.clone());
         }
         None
+    }
+}
+
+impl Deref for Files {
+    type Target = HashMap<usize, File>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Files {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
@@ -90,7 +100,7 @@ pub fn parse(
 
     // Go through the line map of each file and fill in holes smaller than N
     // lines:
-    let N = 5;
+    const N: usize = 5;
     for f in files.values_mut() {
         let prev = 0;
         let mut to_add = Vec::new();
@@ -151,24 +161,19 @@ pub fn parse(
         }
     }
 
-    Files { files }
+    Files(files)
 }
 
 fn correct_rust_paths(files: &mut ::std::collections::HashMap<usize, File>) {
-    let rust =
-        ::std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+    let rust = ::std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
 
     let mut sysroot = ::std::process::Command::new(&rust);
     sysroot.arg("--print").arg("sysroot");
 
-    let r = crate::process::exec(
-        &mut sysroot,
-        "failed to call rustc --print sysroot",
-        false,
-    );
+    let r = crate::process::exec(&mut sysroot, "failed to call rustc --print sysroot", false);
 
     let mut sysroot = match r {
-        Ok((stdout, _stderr)) => ::std::path::PathBuf::from(stdout.trim()),
+        Ok((stdout, _stderr)) => PathBuf::from(stdout.trim()),
         Err(()) => panic!(),
     };
 
@@ -215,7 +220,7 @@ fn correct_rust_paths(files: &mut ::std::collections::HashMap<usize, File>) {
                     info!("path does not exist: {}. Maybe the rust-src component is not installed? Use `rustup component add rust-src to install it!`", f.ast.path.display());
                     missing_path_warning = true;
                 }
-                opts.set_rust(false);
+                OPTS.set_rust(false);
             }
         } else {
             debug!("couldn't correct {}", &f.ast.path.display());

@@ -1,10 +1,9 @@
 //! Path utilities
 
+use std::path::{Path, PathBuf};
+
 /// Does the path contain the sub path?
-pub fn contains(
-    path: &::std::path::Path,
-    sub_path: &::std::path::Path,
-) -> bool {
+pub fn contains(path: &Path, sub_path: &Path) -> bool {
     let mut sub_path_iter = sub_path.components();
     let mut next_sub_path = sub_path_iter.next();
 
@@ -15,11 +14,9 @@ pub fn contains(
 
     let mut matching = false;
     for c in path.components() {
-        if let Some(next_sp) = next_sub_path {
-            if let ::std::path::Component::RootDir = next_sp {
-                if !cfg!(target_os = "windows") {
-                    next_sub_path = sub_path_iter.next();
-                }
+        if let Some(std::path::Component::RootDir) = next_sub_path {
+            if !cfg!(target_os = "windows") {
+                next_sub_path = sub_path_iter.next();
             }
         }
         let next_sub_path_val = next_sub_path.unwrap();
@@ -42,13 +39,10 @@ pub fn contains(
 }
 
 /// Path after sub-path:
-pub fn after(
-    path: &::std::path::Path,
-    sub_path: &::std::path::Path,
-) -> ::std::path::PathBuf {
-    assert!(contains(&path, &sub_path));
+pub fn after(path: &Path, sub_path: &Path) -> PathBuf {
+    assert!(contains(path, sub_path));
 
-    let mut buf = ::std::path::PathBuf::new();
+    let mut buf = PathBuf::new();
 
     let mut sub_path_iter = sub_path.components();
     let mut next_sub_path = sub_path_iter.next();
@@ -59,11 +53,9 @@ pub fn after(
         if appending {
             buf.push(c.as_os_str());
         } else {
-            if let Some(next_sp) = next_sub_path {
-                if let ::std::path::Component::RootDir = next_sp {
-                    if !cfg!(target_os = "windows") {
-                        next_sub_path = sub_path_iter.next();
-                    }
+            if let Some(std::path::Component::RootDir) = next_sub_path {
+                if !cfg!(target_os = "windows") {
+                    next_sub_path = sub_path_iter.next();
                 }
             }
 
@@ -88,7 +80,7 @@ pub fn after(
 }
 
 /// Appends the `tail` to the path:
-pub fn push(path: &mut ::std::path::PathBuf, tail: &::std::path::Path) {
+pub fn push(path: &mut PathBuf, tail: &Path) {
     assert!(!tail.is_absolute());
     path.push(tail);
 }
@@ -98,31 +90,27 @@ mod tests {
     #[test]
     fn contains() {
         {
-            let sub_path =
-                ::std::path::PathBuf::from("lib/rustlib/src/rust/src/");
+            let sub_path = PathBuf::from("lib/rustlib/src/rust/src/");
 
-            let macosx_path = ::std::path::PathBuf::from("/Users/foo/.rustup/toolchains/nightly-x86_64-apple-darwin/lib/rustlib/src/rust/src/liballoc");
-            let macosx_path_typo = ::std::path::PathBuf::from("/Users/foo/.rustup/toolchains/nightly-x86_64-apple-darwin/lib/rustlib2/src/rust/src/liballoc");
+            let macosx_path = PathBuf::from("/Users/foo/.rustup/toolchains/nightly-x86_64-apple-darwin/lib/rustlib/src/rust/src/liballoc");
+            let macosx_path_typo = PathBuf::from("/Users/foo/.rustup/toolchains/nightly-x86_64-apple-darwin/lib/rustlib2/src/rust/src/liballoc");
 
             assert!(super::contains(&macosx_path, &sub_path));
             assert!(!super::contains(&macosx_path_typo, &sub_path));
             assert_eq!(
                 super::after(&macosx_path, &sub_path),
-                ::std::path::PathBuf::from("liballoc")
+                PathBuf::from("liballoc")
             );
         }
         if cfg!(target_os = "windows") {
-            let sub_path = ::std::path::PathBuf::from(
-                r#"C:\projects\cargo-asm\cargo-asm-test\lib_crate"#,
-            );
-            let windows_path = ::std::path::PathBuf::from(
-                r#"C:\projects\cargo-asm\cargo-asm-test\lib_crate\src\lib.rs"#,
-            );
+            let sub_path = PathBuf::from(r#"C:\projects\cargo-asm\cargo-asm-test\lib_crate"#);
+            let windows_path =
+                PathBuf::from(r#"C:\projects\cargo-asm\cargo-asm-test\lib_crate\src\lib.rs"#);
             assert!(super::contains(&windows_path, &sub_path));
 
             assert_eq!(
                 super::after(&windows_path, &sub_path),
-                ::std::path::PathBuf::from(r#"src\lib.rs"#)
+                PathBuf::from(r#"src\lib.rs"#)
             );
         }
     }

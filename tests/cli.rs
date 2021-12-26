@@ -917,9 +917,12 @@ fn inherent_method() {
 #[test]
 fn completions() {
     lib_test(&["maxarray"])
-        .stderr().contains("could not find function at path \"maxarray\" in the generated assembly.")
-        .stderr().contains("lib_crate::bar::max_array")
-        .stderr().contains("lib_crate::sum_array")
+        .stderr()
+        .contains("could not find function at path \"maxarray\" in the generated assembly.")
+        .stderr()
+        .contains("lib_crate::bar::max_array")
+        .stderr()
+        .contains("lib_crate::sum_array")
         .fails()
         .unwrap();
 }

@@ -2,8 +2,6 @@
 
 use crate::target::TargetInfo;
 
-use rustc_demangle;
-
 fn has_hash(name: &str) -> bool {
     let mut bytes = name.bytes().rev();
     for _ in 0..16 {
@@ -11,18 +9,16 @@ fn has_hash(name: &str) -> bool {
             return false;
         }
     }
-    bytes.next() == Some(b'h')
-        && bytes.next() == Some(b':')
-        && bytes.next() == Some(b':')
+    bytes.next() == Some(b'h') && bytes.next() == Some(b':') && bytes.next() == Some(b':')
 }
 
 fn is_ascii_hexdigit(byte: u8) -> bool {
-    byte >= b'0' && byte <= b'9' || byte >= b'a' && byte <= b'f'
+    matches!(byte, b'0'..=b'9' | b'a'..=b'f')
 }
 
 pub fn demangle(n: &str, target: &TargetInfo) -> String {
     let n = if target.is_linux() {
-        n.split("@PLT").nth(0).unwrap().to_string()
+        n.split("@PLT").next().unwrap().to_string()
     } else {
         n.to_string()
     };

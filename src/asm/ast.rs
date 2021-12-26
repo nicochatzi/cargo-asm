@@ -4,6 +4,7 @@ use crate::target::TargetInfo;
 
 use log::debug;
 use serde_derive::Serialize;
+use std::path::PathBuf;
 
 /// AST of an asm function
 #[derive(Debug, Clone)]
@@ -55,7 +56,7 @@ pub enum Directive {
 
 #[derive(PartialEq, Debug, Clone, Serialize)]
 pub struct File {
-    pub path: ::std::path::PathBuf,
+    pub path: PathBuf,
     pub index: usize,
 }
 
@@ -80,9 +81,12 @@ impl File {
         let file_path_index = 1;
         let colon_tokens = s.split('"').collect::<Vec<_>>();
 
-        let path = colon_tokens
-            .get(file_path_index)
-            .unwrap_or_else(|| panic!("could not get file path of {} | file_path_index: {} | tokens: {:?}", s, file_path_index, &colon_tokens));
+        let path = colon_tokens.get(file_path_index).unwrap_or_else(|| {
+            panic!(
+                "could not get file path of {} | file_path_index: {} | tokens: {:?}",
+                s, file_path_index, &colon_tokens
+            )
+        });
 
         if colon_tokens.is_empty() {
             return None;
@@ -90,7 +94,12 @@ impl File {
         // On Linux some files miss the file index:
         let index = ws_tokens
             .get(file_path_index_index)
-            .unwrap_or_else(|| panic!("could not get file index of {} | file_path_index_index: {} | tokens: {:?}", s, file_path_index_index, &ws_tokens))
+            .unwrap_or_else(|| {
+                panic!(
+                    "could not get file index of {} | file_path_index_index: {} | tokens: {:?}",
+                    s, file_path_index_index, &ws_tokens
+                )
+            })
             .parse()
             .unwrap_or(0);
         if ws_tokens.is_empty() {
@@ -109,7 +118,7 @@ impl File {
             // component is installed in the user's machine, and the rust-src
             // component does not necessarily need to be installed.
         }
-        let path = ::std::path::PathBuf::from(path_str);
+        let path = PathBuf::from(path_str);
         debug!("parsed file path: {}", path.display());
 
         Some(Self { path, index })
@@ -220,9 +229,7 @@ impl Directive {
             if let Some(loc) = Loc::new(s, target) {
                 return Some(Directive::Loc(loc));
             }
-            return Some(Directive::Generic(
-                GenericDirective::new(s).unwrap(),
-            ));
+            return Some(Directive::Generic(GenericDirective::new(s).unwrap()));
         }
         None
     }
@@ -276,11 +283,7 @@ pub struct Instruction {
 }
 
 impl Instruction {
-    pub fn new(
-        s: &str,
-        rust_loc: Option<Loc>,
-        target: &TargetInfo,
-    ) -> Option<Self> {
+    pub fn new(s: &str, rust_loc: Option<Loc>, target: &TargetInfo) -> Option<Self> {
         let mut iter = s.split(|c: char| c.is_whitespace() || c == ',');
         let instr = iter.next().unwrap().trim().to_string();
         let mut args = Vec::new();
@@ -295,24 +298,18 @@ impl Instruction {
             args,
             rust_loc,
         };
-        v.demangle_args(&target);
+        v.demangle_args(target);
         Some(v)
     }
     pub fn is_jump(&self, target: &TargetInfo) -> bool {
-        if target.is_x86()
-            || target.is_i386()
-            || target.is_i586()
-            || target.is_i686()
-        {
+        if target.is_x86() || target.is_i386() || target.is_i586() || target.is_i686() {
             self.instr.starts_with('j') && self.args.len() == 1
         } else if target.is_aarch64() {
             self.instr == "b" || self.instr.starts_with("b.")
         } else if target.is_arm() || target.is_sparc() {
             self.args.iter().any(|x| x.starts_with(".L"))
         } else if target.is_power() {
-            self.instr.starts_with('b')
-                && self.instr != "bl"
-                && self.args.len() == 2
+            self.instr.starts_with('b') && self.instr != "bl" && self.args.len() == 2
         } else if target.is_mips() {
             self.instr.starts_with('b') && self.instr.len() > 1
         } else {
@@ -350,16 +347,14 @@ impl Instruction {
                 }
                 let l = l.unwrap();
                 let name_to_demangle = &arg[f..l].to_string();
-                let demangled_name =
-                    crate::demangle::demangle(&name_to_demangle, &target);
+                let demangled_name = crate::demangle::demangle(name_to_demangle, target);
                 let new_arg = arg.replace(name_to_demangle, &demangled_name);
                 *arg = new_arg;
             }
-        } else if self.is_call(&target) {
+        } else if self.is_call(target) {
             // Typically, we just check if the instruction is a call
             // instruction, and the mangle the first argument.
-            let demangled_function =
-                crate::demangle::demangle(&self.args[0], &target);
+            let demangled_function = crate::demangle::demangle(&self.args[0], target);
             self.args[0] = demangled_function;
         }
     }
@@ -389,10 +384,10 @@ fn replace_slashes(s: &mut String) {
 mod tests {
     #[test]
     fn replace_slashes() {
-        let mut windows_path = r#"C:\\projects\\cargo-asm\\cargo-asm-test\\lib_crate\\src\\bar.rs"#.to_string();
+        let mut windows_path =
+            r#"C:\\projects\\cargo-asm\\cargo-asm-test\\lib_crate\\src\\bar.rs"#.to_string();
         let windows_path_norm =
-            r#"C:\projects\cargo-asm\cargo-asm-test\lib_crate\src\bar.rs"#
-                .to_string();
+            r#"C:\projects\cargo-asm\cargo-asm-test\lib_crate\src\bar.rs"#.to_string();
         super::replace_slashes(&mut windows_path);
         assert_eq!(windows_path_norm, windows_path);
     }

@@ -1,16 +1,13 @@
 use self::ast::*;
 use super::ast;
-use crate::options::{opts, Ext};
+use crate::options::{Ext, OPTS};
 use crate::target::TargetInfo;
+use std::path::Path;
 
 use log::{debug, error};
 
 /// Parses the body of a function `path` from the `function_line`
-fn function_body(
-    function_lines: Vec<String>,
-    path: &str,
-    target: &TargetInfo,
-) -> ast::Function {
+fn function_body(function_lines: Vec<String>, path: &str, target: &TargetInfo) -> ast::Function {
     let mut function = Function {
         id: path.to_string(),
         file: None,
@@ -34,14 +31,13 @@ fn function_body(
         debug!("parsing line: {}", line);
 
         // If the line contains a comment, split the line at the comment.
-        let (node_str, comment_str) =
-            if let Some(comment_start) = line.find(';') {
-                debug!(" * contains a comment at: {:?}", comment_start);
-                let (node_str, comment_str) = line.split_at(comment_start);
-                (node_str, comment_str)
-            } else {
-                (line.as_str(), "")
-            };
+        let (node_str, comment_str) = if let Some(comment_start) = line.find(';') {
+            debug!(" * contains a comment at: {:?}", comment_start);
+            let (node_str, comment_str) = line.split_at(comment_start);
+            (node_str, comment_str)
+        } else {
+            (line.as_str(), "")
+        };
 
         // If the line contains a comment, we parse that first:
         if let Some(comment) = Comment::new(comment_str) {
@@ -112,9 +108,7 @@ fn function_body(
             continue;
         }
 
-        if let Some(instruction) =
-            Instruction::new(node_str, current_loc, &target)
-        {
+        if let Some(instruction) = Instruction::new(node_str, current_loc, target) {
             debug!(" * parsed instruction: {:?}", instruction);
 
             function
@@ -133,21 +127,21 @@ fn function_body(
 
 /// Result of parsing a function, either a match, or a table of functions in
 /// the file.
-pub enum Result {
+pub enum ParseResult {
     Found(ast::Function, ::std::collections::HashMap<usize, ast::File>),
     NotFound(Vec<String>),
 }
 
 /// Parses the assembly function at `path` from the file `file`.
 #[allow(clippy::use_debug, clippy::cognitive_complexity)]
-pub fn function(file: &::std::path::Path, target: &TargetInfo) -> Result {
+pub fn function(file: &Path, target: &TargetInfo) -> ParseResult {
     use std::{
         collections::HashMap,
         fs::File,
         io::{BufRead, BufReader},
     };
 
-    let path = if let Some(path) = opts.path() {
+    let path = if let Some(path) = OPTS.path() {
         path
     } else {
         "".to_owned()
@@ -195,8 +189,7 @@ pub fn function(file: &::std::path::Path, target: &TargetInfo) -> Result {
             // Assembly functions are labels that start with `_` or `__`
             // and have mangled names.
             if let Some(label) = ast::Label::new(&line, None) {
-                let demangled_function_name =
-                    crate::demangle::demangle(&label.id, &target);
+                let demangled_function_name = crate::demangle::demangle(&label.id, target);
                 function_table.push(demangled_function_name.clone());
                 if demangled_function_name != path {
                     continue;
@@ -204,7 +197,7 @@ pub fn function(file: &::std::path::Path, target: &TargetInfo) -> Result {
                 // We have found the function, collect its lines and build
                 // an AST:
                 let mut lines = Vec::<String>::new();
-                while let Some(l) = line_iter.next() {
+                for l in line_iter.by_ref() {
                     let l = l.unwrap().trim().to_string();
                     if l.starts_with(function_end_pattern) {
                         break;
@@ -212,13 +205,13 @@ pub fn function(file: &::std::path::Path, target: &TargetInfo) -> Result {
                     lines.push(l);
                 }
                 debug!("Function found: {}", path);
-                if opts.debug_mode() {
+                if OPTS.debug_mode() {
                     for l in &lines {
                         debug!("## {}", l);
                     }
                 }
 
-                function = Some(function_body(lines, &path, &target));
+                function = Some(function_body(lines, &path, target));
                 // If the function contained a .file directive, we are
                 // done:
                 if let Some(ref function) = &function {
@@ -249,7 +242,7 @@ pub fn function(file: &::std::path::Path, target: &TargetInfo) -> Result {
 
         // If the line does not begin an assembly function try to parse the
         // line as a .file directive.
-        if let Some(file) = ast::File::new(&line, &target) {
+        if let Some(file) = ast::File::new(&line, target) {
             debug!("found file directive: {:?}", file);
             let idx = file.index;
 
@@ -282,7 +275,7 @@ pub fn function(file: &::std::path::Path, target: &TargetInfo) -> Result {
     if function.is_none() {
         // If the function is not found we have visited the whole file so the
         // function table is complete.
-        return Result::NotFound(function_table);
+        return ParseResult::NotFound(function_table);
     }
 
     let function = function.unwrap();
@@ -308,19 +301,14 @@ pub fn function(file: &::std::path::Path, target: &TargetInfo) -> Result {
         if let Statement::Directive(Directive::Loc(ref l)) = s {
             if !file_directive_table.contains_key(&l.file_index) {
                 done = false;
-                error!(
-                    "File directive for location not found! Location: {:?}",
-                    l
-                );
+                error!("File directive for location not found! Location: {:?}", l);
             }
         }
     }
 
     if done {
-        return Result::Found(function, file_directive_table);
+        return ParseResult::Found(function, file_directive_table);
     }
 
-    unimplemented!(
-        "TODO: need to continue scanning the file for file directives"
-    )
+    unimplemented!("TODO: need to continue scanning the file for file directives")
 }

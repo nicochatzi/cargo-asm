@@ -2,6 +2,11 @@
 
 use super::*;
 
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+};
+
 /// Type of the build.
 #[derive(Copy, Clone, Debug)]
 pub enum Type {
@@ -11,20 +16,23 @@ pub enum Type {
     Release,
 }
 
-impl ::std::str::FromStr for Type {
+impl FromStr for Type {
     type Err = String;
-    fn from_str(s: &str) -> ::std::result::Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "debug" => Ok(Type::Debug),
             "release" => Ok(Type::Release),
-            v => Err(format!("\"{}\" is not a valid build type. Try \"debug\" or \"releaes\"", v))
+            v => Err(format!(
+                "\"{}\" is not a valid build type. Try \"debug\" or \"releaes\"",
+                v
+            )),
         }
     }
 }
 
 /// Builds the project according to the CLI options and returns a list of
 /// assembly files generated.
-pub fn project() -> Vec<::std::path::PathBuf> {
+pub fn project() -> Vec<PathBuf> {
     use std::process::Command;
     debug!("Building project...");
 
@@ -41,46 +49,44 @@ pub fn project() -> Vec<::std::path::PathBuf> {
     // TODO: unclear if `cargo build` + `RUSTFLAGS` should be used,
     // or instead one should use `cargo rustc -- --emit asm`
     cargo_build.arg("build");
-    if !opts.no_color() {
+    if !OPTS.no_color() {
         cargo_build.arg("--color=always");
         cargo_build.env("LS_COLORS", "rs=0:di=38;5;27:mh=44;38;5;15");
     }
     if let Ok(v) = ::std::env::var("RUSTC") {
         cargo_build.env("RUSTC", v);
     }
-    if let Type::Release = opts.build_type() {
+    if let Type::Release = OPTS.build_type() {
         cargo_build.arg("--release");
     }
     cargo_build.arg("--verbose");
 
-    if !opts.features().is_empty() {
-        cargo_build.arg(&format!("--features={}", opts.features().join(",")));
+    if !OPTS.features().is_empty() {
+        cargo_build.arg(&format!("--features={}", OPTS.features().join(",")));
     }
 
-    if let Some(example) = opts.example() {
+    if let Some(example) = OPTS.example() {
         cargo_build.arg(&format!("--example={}", example));
     }
 
-    if opts.no_default_features() {
+    if OPTS.no_default_features() {
         cargo_build.arg("--no-default-features");
     }
 
-    if opts.lib() {
+    if OPTS.lib() {
         cargo_build.arg("--lib");
     }
 
-    if let Some(triple) = opts.TRIPLE() {
+    if let Some(triple) = OPTS.triple() {
         cargo_build.arg(&format!("--target={}", triple));
     }
 
     let ti = crate::target::TargetInfo::new_from_target();
 
-    match *opts.read() {
+    match *OPTS.read() {
         crate::options::Options::Asm(ref o) => {
             let asm_syntax = match o.asm_style {
-                crate::asm::Style::Intel if ti.is_intel() => {
-                    "-C llvm-args=-x86-asm-syntax=intel"
-                }
+                crate::asm::Style::Intel if ti.is_intel() => "-C llvm-args=-x86-asm-syntax=intel",
                 _ => "",
             };
 
@@ -92,10 +98,7 @@ pub fn project() -> Vec<::std::path::PathBuf> {
 
             cargo_build.env(
                 "RUSTFLAGS",
-                format!(
-                    "{} --emit asm {} {}",
-                    rustflags, debug_info, asm_syntax
-                ),
+                format!("{} --emit asm {} {}", rustflags, debug_info, asm_syntax),
             );
         }
         crate::options::Options::LlvmIr(ref _o) => {
@@ -109,11 +112,10 @@ pub fn project() -> Vec<::std::path::PathBuf> {
 
     debug!("starting cargo build... {:?}", cargo_build);
     let error_msg = "cargo build failed";
-    process::exec(&mut cargo_build, error_msg, opts.debug_mode())
-        .expect(error_msg);
+    process::exec(&mut cargo_build, error_msg, OPTS.debug_mode()).expect(error_msg);
     debug!("cargo build finished...");
 
-    let ext = match *opts.read() {
+    let ext = match *OPTS.read() {
         crate::options::Options::Asm(_) => "s",
         crate::options::Options::LlvmIr(_) => "ll",
     };
@@ -128,7 +130,7 @@ pub fn project() -> Vec<::std::path::PathBuf> {
         |_, extension| extension == Some(ext),
     ));
 
-    if let Some(example) = opts.example() {
+    if let Some(example) = OPTS.example() {
         let example_directory = crate::target::directory("examples");
         let prefix = format!("{}-", example);
 
@@ -137,8 +139,7 @@ pub fn project() -> Vec<::std::path::PathBuf> {
         output_files.append(&mut scan_directory(
             example_directory.as_path(),
             |stem, extension| {
-                let has_prefix =
-                    stem.map_or(false, |stem| stem.starts_with(&prefix));
+                let has_prefix = stem.map_or(false, |stem| stem.starts_with(&prefix));
                 let has_extension = extension == Some(ext);
                 has_prefix && has_extension
             },
@@ -162,10 +163,7 @@ pub fn project() -> Vec<::std::path::PathBuf> {
 }
 
 /// Scan a given output directory for files matching the predicate:
-fn scan_directory<P>(
-    target_directory: &::std::path::Path,
-    predicate: P,
-) -> Vec<::std::path::PathBuf>
+fn scan_directory<P>(target_directory: &Path, predicate: P) -> Vec<PathBuf>
 where
     P: Fn(Option<&str>, Option<&str>) -> bool,
 {
