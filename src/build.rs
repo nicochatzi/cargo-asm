@@ -77,6 +77,14 @@ pub fn project() -> Vec<PathBuf> {
         cargo_build.arg("--lib");
     }
 
+    if OPTS.benches() {
+        cargo_build.arg("--benches");
+    }
+
+    if OPTS.tests() {
+        cargo_build.arg("--tests");
+    }
+
     if let Some(triple) = OPTS.triple() {
         cargo_build.arg(&format!("--target={}", triple));
     }

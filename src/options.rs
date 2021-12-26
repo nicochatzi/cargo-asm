@@ -67,6 +67,10 @@ pub struct Asm {
     pub debug_info: bool,
     #[structopt(long = "lib", help = "Builds only the lib target.")]
     pub lib: bool,
+    #[structopt(long = "benches", help = "Builds only the benches target.")]
+    pub benches: bool,
+    #[structopt(long = "tests", help = "Builds only the tests target.")]
+    pub tests: bool,
     #[structopt(
         long = "no-default-features",
         help = "Disables all cargo features when building the project."
@@ -109,6 +113,10 @@ pub struct LlvmIr {
     pub manifest_path: Option<PathBuf>,
     #[structopt(long = "lib", help = "Builds only the lib target.")]
     pub lib: bool,
+    #[structopt(long = "benches", help = "Builds only the benches target.")]
+    pub benches: bool,
+    #[structopt(long = "tests", help = "Builds only the tests target.")]
+    pub tests: bool,
     #[structopt(
         long = "no-default-features",
         help = "Disables all cargo features when building the project."
@@ -135,6 +143,8 @@ pub trait Ext {
     fn features(&self) -> Vec<String>;
     fn example(&self) -> Option<String>;
     fn lib(&self) -> bool;
+    fn benches(&self) -> bool;
+    fn tests(&self) -> bool;
     fn no_default_features(&self) -> bool;
 }
 
@@ -205,7 +215,6 @@ impl Ext for ::parking_lot::RwLock<Options> {
             Options::LlvmIr(ref o) => o.manifest_path.clone(),
         }
     }
-
     fn use_colors(&self) -> bool {
         !self.no_color()
     }
@@ -245,6 +254,18 @@ impl Ext for ::parking_lot::RwLock<Options> {
         match *self.read() {
             Options::Asm(ref o) => o.lib,
             Options::LlvmIr(ref o) => o.lib,
+        }
+    }
+    fn benches(&self) -> bool {
+        match *self.read() {
+            Options::Asm(ref o) => o.benches,
+            Options::LlvmIr(ref o) => o.benches,
+        }
+    }
+    fn tests(&self) -> bool {
+        match *self.read() {
+            Options::Asm(ref o) => o.tests,
+            Options::LlvmIr(ref o) => o.tests,
         }
     }
     fn no_default_features(&self) -> bool {

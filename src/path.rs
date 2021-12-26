@@ -87,6 +87,8 @@ pub fn push(path: &mut PathBuf, tail: &Path) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn contains() {
         {
